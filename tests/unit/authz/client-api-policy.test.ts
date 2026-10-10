@@ -309,3 +309,79 @@ test("clientApiPolicy: ROUTER_API_KEY remains accepted for client API routes", a
     assert.equal(out.subject.kind, "client_api_key");
   }
 });
+
+
+test("FIRBO dedicated six-scope MCP key is rejected at every CLIENT_API endpoint", async () => {
+  const { FIRBO_MCP_READONLY_SCOPES } = await import(
+    "../../../src/shared/constants/firboMcpReadOnlyKey.ts"
+  );
+  const created = await apiKeysDb.createApiKey(
+    "firbo-mcp-readonly",
+    "machine-mcp-security",
+    [...FIRBO_MCP_READONLY_SCOPES],
+    {
+      modelAccessMode: "restricted",
+      allowedModels: [],
+      allowedCombos: [],
+      allowedConnections: [],
+    }
+  );
+  const policy = await loadPolicy();
+
+  for (const pathname of [
+    "/api/v1/chat/completions",
+    "/api/v1/responses",
+    "/api/v1/models",
+    "/api/v1/embeddings",
+    "/api/v1/images/generations",
+    "/api/v1/audio/speech",
+    "/api/v1/files",
+    "/api/v1/batches",
+    "/api/v1/moderations",
+  ]) {
+    const result = await policy.evaluate(
+      ctx(new Headers({ authorization: "Bearer " + created.key }), "POST", pathname)
+    );
+    assert.equal(result.allow, false, pathname);
+    if (!result.allow) {
+      assert.equal(result.status, 403, pathname);
+      assert.equal(result.code, "MCP_ONLY_KEY", pathname);
+    }
+  }
+});
+
+test("FIRBO restricted MCP key is denied via x-api-key and x-goog-api-key too", async () => {
+  const { FIRBO_MCP_READONLY_SCOPES } = await import(
+    "../../../src/shared/constants/firboMcpReadOnlyKey.ts"
+  );
+  const created = await apiKeysDb.createApiKey(
+    "firbo-mcp-auth-headers",
+    "machine-mcp-alternate-headers",
+    [...FIRBO_MCP_READONLY_SCOPES],
+    { modelAccessMode: "restricted", allowedModels: [], allowedCombos: [] }
+  );
+  const policy = await loadPolicy();
+  for (const headers of [
+    new Headers({ "x-api-key": created.key }),
+    new Headers({ "x-goog-api-key": created.key }),
+  ]) {
+    const result = await policy.evaluate(ctx(headers));
+    assert.equal(result.allow, false);
+    if (!result.allow) assert.equal(result.code, "MCP_ONLY_KEY");
+  }
+});
+
+test("ordinary client keys continue to work after MCP-only client-policy gate", async () => {
+  const created = await apiKeysDb.createApiKey(
+    "normal-client-api",
+    "machine-normal-client",
+    ["self:usage"],
+    { modelAccessMode: "all" }
+  );
+  const policy = await loadPolicy();
+  const out = await policy.evaluate(
+    ctx(new Headers({ authorization: "Bearer " + created.key }))
+  );
+  assert.equal(out.allow, true);
+  if (out.allow) assert.equal(out.subject.kind, "client_api_key");
+});
