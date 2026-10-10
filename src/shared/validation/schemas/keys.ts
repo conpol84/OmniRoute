@@ -15,6 +15,7 @@ import {
 import { MAX_TIMER_TIMEOUT_MS } from "@/shared/utils/runtimeTimeouts";
 
 import { accessScheduleSchema } from "./misc.ts";
+import { isDedicatedFirboMcpReadOnlyScopes } from "@/shared/constants/firboMcpReadOnlyKey";
 
 // ──── API Key Schemas ────
 
@@ -70,6 +71,31 @@ export const createKeySchema = z
   .superRefine((value, ctx) => {
     requireConsistentModelAccess(value, ctx);
     requireExclusiveLeaseConnections(value, ctx);
+    if (value.mcpReadOnly === true) {
+      // A dedicated MCP-only key is an EXACT grant, never a scope union.
+      if (value.scopes && !isDedicatedFirboMcpReadOnlyScopes(value.scopes)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["scopes"],
+          message: "Dedicated MCP key requires exactly the six MCP read-only scopes",
+        });
+      }
+      if (
+        value.modelAccessMode === "all" ||
+        (value.allowedModels?.length ?? 0) > 0 ||
+        (value.allowedCombos?.length ?? 0) > 0 ||
+        (value.allowedConnections?.length ?? 0) > 0 ||
+        value.noLog === true ||
+        value.allowUsageCommand === true ||
+        value.chaosModeEnabled === true
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["mcpReadOnly"],
+          message: "Dedicated MCP key cannot grant management, inference or execution privileges",
+        });
+      }
+    }
   });
 
 export const createSyncTokenSchema = z.object({
