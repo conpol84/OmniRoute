@@ -5,6 +5,8 @@ on:
       - firbo/mcp-dedicated-readonly-key-preset-20261010
     paths:
       - src/shared/constants/firboMcpReadOnlyKey.ts
+      - src/server/authz/policies/clientApi.ts
+      - tests/unit/authz/client-api-policy.test.ts
       - src/shared/validation/schemas/keys.ts
       - src/app/api/keys/route.ts
       - src/app/api/keys/**/route.ts
@@ -44,13 +46,15 @@ jobs:
           node --import tsx/esm \
             --import ./open-sse/utils/setupPolyfill.ts \
             --import ./tests/_setup/isolateDataDir.ts \
-            --test tests/unit/dashboard/firboMcpReadOnlyKey.test.ts
+            --test tests/unit/dashboard/firboMcpReadOnlyKey.test.ts tests/unit/authz/client-api-policy.test.ts
       - name: Typecheck existing OmniRoute API routes and dashboard
         run: npx --no-install tsc --noEmit --pretty false --incremental false
       - name: Existing ESLint guard for modified code
         run: |
           npx --no-install eslint --no-cache \
             src/shared/constants/firboMcpReadOnlyKey.ts \
+            src/server/authz/policies/clientApi.ts \
+            tests/unit/authz/client-api-policy.test.ts \
             src/shared/validation/schemas/keys.ts \
             src/app/api/keys/route.ts \
             'src/app/api/keys/[id]/route.ts' \
@@ -65,6 +69,7 @@ jobs:
           const scopes=fs.readFileSync('src/shared/constants/firboMcpReadOnlyKey.ts','utf8');
           const create=fs.readFileSync('src/app/api/keys/route.ts','utf8');
           const patch=fs.readFileSync('src/app/api/keys/[id]/route.ts','utf8');
+          const auth=fs.readFileSync('src/server/authz/policies/clientApi.ts','utf8');
           const ui=fs.readFileSync('src/app/(dashboard)/dashboard/api-manager/ApiManagerPageClient.tsx','utf8');
           for(const name of ['mcp:connect','read:health','read:quota','read:usage','read:models','read:combos']) {
             if(!scopes.includes('"'+name+'"')) throw Error('missing required scope');
@@ -73,5 +78,6 @@ jobs:
           if(!create.includes('mcpReadOnly === true') || !create.includes('modelAccessMode: dedicatedMcp ? "restricted"') || !create.includes('allowedModels: dedicatedMcp ? []')) throw Error('MCP create not server enforced');
           if(!patch.includes('isDedicatedFirboMcpReadOnlyScopes(scopes)') || !patch.includes('payload.modelAccessMode = "restricted"')) throw Error('MCP edit not server enforced');
           if(!ui.includes('window.confirm(firboMcpEdit.confirm)')) throw Error('conversion confirmation missing');
+          if(!auth.includes('isDedicatedFirboMcpReadOnlyScopes(metadata.scopes)') || !auth.includes('reject(403, "MCP_ONLY_KEY"')) throw Error('MCP key not denied on inference API');
           console.log('firbo_dedicated_mcp_key_exact_scope_contract=true');
           JS
