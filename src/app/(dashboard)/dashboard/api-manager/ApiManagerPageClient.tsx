@@ -24,6 +24,7 @@ import {
 import type { KeyStatus, KeyType } from "./apiManagerPageUtils";
 import { readActiveOnlyPreference, writeActiveOnlyPreference } from "./apiManagerPageStorage";
 import { buildApiKeyCreateScopes, mergeApiKeyPermissionScopes } from "./apiManagerScopes";
+import { firboMcpKeyCopy } from "./firboMcpKeyCopy";
 import { SELF_ACCOUNT_QUOTA_SCOPE, SELF_USAGE_SCOPE } from "@/shared/constants/selfServiceScopes";
 import { extractApiErrorMessage } from "@/shared/http/apiErrorMessage";
 import { hasProviderQuotaBypassScope } from "@/shared/constants/apiKeyPolicyScopes";
@@ -214,6 +215,7 @@ export default function ApiManagerPageClient() {
   const t = useTranslations("apiManager");
   const tc = useTranslations("common");
   const locale = useLocale();
+  const firboMcpCopy = firboMcpKeyCopy(locale);
   const newKeyNameInputId = useId();
   const createKeyFormRef = useRef<HTMLDivElement | null>(null);
   const [keys, setKeys] = useState<ApiKey[]>([]);
@@ -225,6 +227,7 @@ export default function ApiManagerPageClient() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [newKeyName, setNewKeyName] = useState("");
   const [newKeyManageEnabled, setNewKeyManageEnabled] = useState(false);
+  const [newMcpReadOnlyEnabled, setNewMcpReadOnlyEnabled] = useState(false);
   const [newKeySelfUsageEnabled, setNewKeySelfUsageEnabled] = useState(true);
   const [newKeyAccountQuotaEnabled, setNewKeyAccountQuotaEnabled] = useState(false);
   const [newKeyAllowUsageCommand, setNewKeyAllowUsageCommand] = useState(false);
@@ -641,7 +644,9 @@ export default function ApiManagerPageClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: sanitizedName,
+          mcpReadOnly: newMcpReadOnlyEnabled,
           scopes: buildApiKeyCreateScopes({
+            mcpReadOnly: newMcpReadOnlyEnabled,
             manageEnabled: newKeyManageEnabled,
             selfUsageEnabled: newKeySelfUsageEnabled,
             selfAccountQuotaEnabled: newKeyAccountQuotaEnabled,
@@ -656,6 +661,7 @@ export default function ApiManagerPageClient() {
         await fetchData();
         setNewKeyName("");
         setNewKeyManageEnabled(false);
+        setNewMcpReadOnlyEnabled(false);
         setNewKeySelfUsageEnabled(true);
         setNewKeyAccountQuotaEnabled(false);
         setNewKeyAllowUsageCommand(false);
@@ -1491,6 +1497,7 @@ export default function ApiManagerPageClient() {
           setShowAddModal(false);
           setNewKeyName("");
           setNewKeyManageEnabled(false);
+        setNewMcpReadOnlyEnabled(false);
           setNewKeySelfUsageEnabled(true);
           setNewKeyAccountQuotaEnabled(false);
           setNewKeyAllowUsageCommand(false);
@@ -1517,6 +1524,33 @@ export default function ApiManagerPageClient() {
             />
             <p className="text-xs text-text-muted mt-1.5">{t("keyNameDesc")}</p>
           </div>
+          <div className="flex items-start justify-between gap-3 p-3 rounded-lg border border-emerald-500/30 bg-emerald-500/5">
+            <div className="flex flex-col gap-1">
+              <p className="text-sm font-medium text-text-main">{firboMcpCopy.title}</p>
+              <p className="text-xs text-text-muted">{firboMcpCopy.create}</p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-label={firboMcpCopy.title}
+              aria-checked={newMcpReadOnlyEnabled}
+              onClick={() => {
+                const next = !newMcpReadOnlyEnabled;
+                setNewMcpReadOnlyEnabled(next);
+                if (next) {
+                  setNewKeyManageEnabled(false);
+                  setNewKeySelfUsageEnabled(false);
+                  setNewKeyAccountQuotaEnabled(false);
+                  setNewKeyAllowUsageCommand(false);
+                } else {
+                  setNewKeySelfUsageEnabled(true);
+                }
+              }}
+              className="shrink-0 px-3 py-1.5 rounded border border-emerald-500/40 text-sm"
+            >
+              {newMcpReadOnlyEnabled ? tc("enabled") : tc("disabled")}
+            </button>
+          </div>
           <div className="flex items-start justify-between gap-3 p-3 rounded-lg border border-border bg-surface/40">
             <div className="flex flex-col gap-1">
               <p className="text-sm font-medium text-text-main">{t("managementAccess")}</p>
@@ -1526,6 +1560,7 @@ export default function ApiManagerPageClient() {
               type="button"
               role="switch"
               aria-checked={newKeyManageEnabled}
+              disabled={newMcpReadOnlyEnabled}
               onClick={() => setNewKeyManageEnabled((prev) => !prev)}
               className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-semibold transition-colors shrink-0 ${
                 newKeyManageEnabled
@@ -1551,6 +1586,7 @@ export default function ApiManagerPageClient() {
                 type="button"
                 role="switch"
                 aria-checked={newKeySelfUsageEnabled}
+                disabled={newMcpReadOnlyEnabled}
                 onClick={() =>
                   setNewKeySelfUsageEnabled((prev) => {
                     if (prev) setNewKeyAccountQuotaEnabled(false);
@@ -1597,6 +1633,7 @@ export default function ApiManagerPageClient() {
                 type="button"
                 role="switch"
                 aria-checked={newKeyAllowUsageCommand}
+                disabled={newMcpReadOnlyEnabled}
                 onClick={() => setNewKeyAllowUsageCommand((prev) => !prev)}
                 className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-semibold transition-colors shrink-0 ${
                   newKeyAllowUsageCommand
@@ -1621,6 +1658,7 @@ export default function ApiManagerPageClient() {
                 setShowAddModal(false);
                 setNewKeyName("");
                 setNewKeyManageEnabled(false);
+        setNewMcpReadOnlyEnabled(false);
                 setNewKeySelfUsageEnabled(true);
                 setNewKeyAccountQuotaEnabled(false);
                 setNewKeyAllowUsageCommand(false);
