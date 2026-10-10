@@ -2022,19 +2022,19 @@ const PermissionsModal = memo(function PermissionsModal({
     }
 
     // Validate models selection
-    if (!allowAll && !Array.isArray(selectedModels)) {
+    if (!convertToMcpReadOnly && !allowAll && !Array.isArray(selectedModels)) {
       setSaveError(t("invalidModelsSelection"));
       return;
     }
 
     // Limit number of selected models to prevent abuse
-    if (!allowAll && selectedModels.length > MAX_SELECTED_MODELS) {
+    if (!convertToMcpReadOnly && !allowAll && selectedModels.length > MAX_SELECTED_MODELS) {
       setSaveError(t("cannotSelectMoreThanModels", { max: MAX_SELECTED_MODELS }));
       return;
     }
 
     // Validate connections selection when restricted
-    if (!allowAllConnections && selectedConnections.length === 0) {
+    if (!convertToMcpReadOnly && !allowAllConnections && selectedConnections.length === 0) {
       setSaveError(t("selectAtLeastOneConnection"));
       return;
     }
@@ -2691,7 +2691,8 @@ const PermissionsModal = memo(function PermissionsModal({
           <button
             type="button"
             role="switch"
-            aria-checked={manageEnabled}
+            aria-checked={convertToMcpReadOnly ? false : manageEnabled}
+            disabled={convertToMcpReadOnly}
             onClick={() => setManageEnabled((prev) => !prev)}
             className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-semibold transition-colors ${
               manageEnabled
@@ -2700,7 +2701,7 @@ const PermissionsModal = memo(function PermissionsModal({
             }`}
           >
             <span className="material-symbols-outlined text-[14px]">admin_panel_settings</span>
-            {manageEnabled ? tc("enabled") : tc("disabled")}
+            {convertToMcpReadOnly ? tc("disabled") : manageEnabled ? tc("enabled") : tc("disabled")}
           </button>
         </div>
         {/* Self-service Visibility */}
