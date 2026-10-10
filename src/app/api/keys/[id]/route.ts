@@ -11,6 +11,7 @@ import { syncToCloud } from "@/lib/cloudSync";
 import { updateKeyPermissionsSchema } from "@/shared/validation/schemas";
 import { isValidationFailure, validateBody } from "@/shared/validation/helpers";
 import { requireManagementAuth } from "@/lib/api/requireManagementAuth";
+import { isDedicatedFirboMcpReadOnlyScopes } from "@/shared/constants/firboMcpReadOnlyKey";
 import * as log from "@/sse/utils/logger";
 import { buildErrorBody } from "@omniroute/open-sse/utils/error.ts";
 
@@ -131,6 +132,21 @@ export async function PATCH(request, { params }) {
     if (dailyUsageLimitUsd !== undefined) payload.dailyUsageLimitUsd = dailyUsageLimitUsd;
     if (weeklyUsageLimitUsd !== undefined) payload.weeklyUsageLimitUsd = weeklyUsageLimitUsd;
     if (chaosModeEnabled !== undefined) payload.chaosModeEnabled = chaosModeEnabled;
+
+    // Only when the operator submits EXACTLY the six dedicated MCP read scopes,
+    // prevent the same key from retaining old inference/combos capabilities.
+    // This uses the existing audited updateApiKeyPermissions transaction.
+    if (isDedicatedFirboMcpReadOnlyScopes(scopes)) {
+      payload.modelAccessMode = "restricted";
+      payload.allowedModels = [];
+      payload.allowedCombos = [];
+      payload.allowedConnections = [];
+      payload.autoResolve = false;
+      payload.allowAutoCombos = false;
+      payload.noLog = false;
+      payload.allowUsageCommand = false;
+      payload.usageLimitEnabled = false;
+    }
 
     const updated = await updateApiKeyPermissions(id, payload);
     if (!updated) {
