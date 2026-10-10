@@ -2,6 +2,7 @@ import { isDashboardSessionAuthenticated } from "@/shared/utils/apiAuth.ts";
 import { isRequireApiKeyEnabled } from "@/shared/utils/featureFlags";
 import { extractApiKey } from "@/sse/services/auth.ts";
 import { extractGoogApiKeyHeader } from "@/sse/services/googApiKeyAuth.ts";
+import { isDedicatedFirboMcpReadOnlyScopes } from "@/shared/constants/firboMcpReadOnlyKey";
 import type { AuthOutcome, PolicyContext, RoutePolicy } from "../context";
 import { allow, reject } from "../context";
 
@@ -77,7 +78,7 @@ export const clientApiPolicy: RoutePolicy = {
       return reject(401, "AUTH_002", "Authentication required");
     }
 
-    const { validateApiKey } = await import("../../../lib/db/apiKeys");
+    const { validateApiKey, getApiKeyMetadata } = await import("../../../lib/db/apiKeys");
     const ok = await validateApiKey(bearer);
     if (!ok) {
       // Issue #2257: when REQUIRE_API_KEY is off, a stale CLI config (Codex
@@ -94,6 +95,24 @@ export const clientApiPolicy: RoutePolicy = {
         return allow({ kind: "anonymous", id: "local" });
       }
       return reject(401, "AUTH_002", "Invalid API key");
+    }
+
+    // A dedicated FIRBO MCP caller is NOT a normal inference/client-API key,
+    // even for endpoints without a model (models list, files, batch, etc).
+    // The existing /api/mcp/ routes use the management policy's narrow
+    // mcp:connect carve-out and remain unaffected by this CLIENT_API gate.
+    // Do not silently allow if metadata becomes unavailable after validation.
+    let metadata: Awaited<ReturnType<typeof getApiKeyMetadata>>;
+    try {
+      metadata = await getApiKeyMetadata(bearer);
+    } catch {
+      return reject(503, "AUTH_BACKEND_UNAVAILABLE", "API key scope verification unavailable");
+    }
+    if (!metadata) {
+      return reject(503, "AUTH_BACKEND_UNAVAILABLE", "API key scope verification unavailable");
+    }
+    if (isDedicatedFirboMcpReadOnlyScopes(metadata.scopes)) {
+      return reject(403, "MCP_ONLY_KEY", "This API key can access MCP only");
     }
 
     return allow({ kind: "client_api_key", id: maskKeyId(bearer) });
