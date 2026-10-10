@@ -55,6 +55,8 @@ export const createKeySchema = z
     modelAccessMode: z.enum(["all", "restricted"]).optional(),
     allowedModels: z.array(z.string().trim().min(1)).max(1000).optional(),
     allowedCombos: z.array(z.string().trim().min(1).max(200)).max(500).optional(),
+    // Operator-selected fixed six-scope preset; the route enforces exact grants.
+    mcpReadOnly: z.boolean().optional(),
     noLog: z.boolean().optional(),
     allowUsageCommand: z.boolean().optional(),
     usageLimitEnabled: z.boolean().optional(),
