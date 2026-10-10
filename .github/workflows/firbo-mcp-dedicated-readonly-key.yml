@@ -1,0 +1,77 @@
+name: FIRBO OmniRoute Dedicated MCP-only Key Security Gate
+on:
+  push:
+    branches:
+      - firbo/mcp-dedicated-readonly-key-preset-20261010
+    paths:
+      - src/shared/constants/firboMcpReadOnlyKey.ts
+      - src/shared/validation/schemas/keys.ts
+      - src/app/api/keys/route.ts
+      - src/app/api/keys/**/route.ts
+      - src/app/(dashboard)/dashboard/api-manager/**
+      - tests/unit/dashboard/firboMcpReadOnlyKey.test.ts
+      - .github/workflows/firbo-mcp-dedicated-readonly-key.yml
+  pull_request:
+    branches:
+      - firbo/branding
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  secure-existing-key-api:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      DISABLE_SQLITE_AUTO_BACKUP: "true"
+      API_KEY_SECRET: "ci-firbo-mcp-local-synthetic-secret-only-20261010"
+      JWT_SECRET: "ci-firbo-mcp-local-synthetic-jwt-only-20261010"
+      OMNIROUTE_SKIP_SYSTEM_TRUST: "1"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - name: Install pinned npm
+        run: npm install --global npm@11.19.0
+      - name: Install locked dependencies with scripts disabled
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Exact six-scope preset, no manage or inference, schema and legacy regressions
+        run: |
+          node --import tsx/esm \
+            --import ./open-sse/utils/setupPolyfill.ts \
+            --import ./tests/_setup/isolateDataDir.ts \
+            --test tests/unit/dashboard/firboMcpReadOnlyKey.test.ts
+      - name: Typecheck existing OmniRoute API routes and dashboard
+        run: npx --no-install tsc --noEmit --pretty false --incremental false
+      - name: Existing ESLint guard for modified code
+        run: |
+          npx --no-install eslint --no-cache \
+            src/shared/constants/firboMcpReadOnlyKey.ts \
+            src/shared/validation/schemas/keys.ts \
+            src/app/api/keys/route.ts \
+            'src/app/api/keys/[id]/route.ts' \
+            src/app/'(dashboard)'/dashboard/api-manager/apiManagerScopes.ts \
+            src/app/'(dashboard)'/dashboard/api-manager/firboMcpKeyCopy.ts \
+            src/app/'(dashboard)'/dashboard/api-manager/ApiManagerPageClient.tsx \
+            tests/unit/dashboard/firboMcpReadOnlyKey.test.ts
+      - name: Protect server side scope construction and existing management auth
+        run: |
+          node <<'JS'
+          const fs=require('node:fs');
+          const scopes=fs.readFileSync('src/shared/constants/firboMcpReadOnlyKey.ts','utf8');
+          const create=fs.readFileSync('src/app/api/keys/route.ts','utf8');
+          const patch=fs.readFileSync('src/app/api/keys/[id]/route.ts','utf8');
+          const ui=fs.readFileSync('src/app/(dashboard)/dashboard/api-manager/ApiManagerPageClient.tsx','utf8');
+          for(const name of ['mcp:connect','read:health','read:quota','read:usage','read:models','read:combos']) {
+            if(!scopes.includes('"'+name+'"')) throw Error('missing required scope');
+          }
+          if(!create.includes('requireManagementAuth(request)') || !patch.includes('requireManagementAuth(request)')) throw Error('management auth removed');
+          if(!create.includes('mcpReadOnly === true') || !create.includes('modelAccessMode: dedicatedMcp ? "restricted"') || !create.includes('allowedModels: dedicatedMcp ? []')) throw Error('MCP create not server enforced');
+          if(!patch.includes('isDedicatedFirboMcpReadOnlyScopes(scopes)') || !patch.includes('payload.modelAccessMode = "restricted"')) throw Error('MCP edit not server enforced');
+          if(!ui.includes('window.confirm(firboMcpEdit.confirm)')) throw Error('conversion confirmation missing');
+          console.log('firbo_dedicated_mcp_key_exact_scope_contract=true');
+          JS
