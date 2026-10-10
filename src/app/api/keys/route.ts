@@ -13,6 +13,7 @@ import { isValidationFailure, validateBody } from "@/shared/validation/helpers";
 import { isApiKeyRevealEnabled, maskStoredApiKey } from "@/lib/apiKeyExposure";
 import { requireManagementAuth } from "@/lib/api/requireManagementAuth";
 import { normalizeSelfServiceScopesForCreate } from "@/shared/constants/selfServiceScopes";
+import { FIRBO_MCP_READONLY_SCOPES } from "@/shared/constants/firboMcpReadOnlyKey";
 import * as log from "@/sse/utils/logger";
 
 function parsePagination(request: Request) {
@@ -71,6 +72,7 @@ export async function POST(request) {
     }
     const {
       name,
+      mcpReadOnly,
       modelAccessMode,
       allowedModels,
       allowedCombos,
@@ -87,21 +89,28 @@ export async function POST(request) {
 
     // Always get machineId from server
     const machineId = await getConsistentMachineId();
-    const normalizedScopes = normalizeSelfServiceScopesForCreate(scopes);
+    // Fixed dedicated MCP grant is checked server-side, never trusting client
+    // scope unions. Unlike ordinary key creation, it does NOT add self:usage.
+    // A key for gateway status/tools MUST NOT be a model-completion credential.
+    const dedicatedMcp = mcpReadOnly === true;
+    const normalizedScopes = dedicatedMcp
+      ? [...FIRBO_MCP_READONLY_SCOPES]
+      : normalizeSelfServiceScopesForCreate(scopes);
     const apiKey = await createApiKey(name, machineId, normalizedScopes, {
-      modelAccessMode,
-      allowedModels,
-      allowedCombos,
-      allowedConnections,
+      modelAccessMode: dedicatedMcp ? "restricted" : modelAccessMode,
+      allowedModels: dedicatedMcp ? [] : allowedModels,
+      allowedCombos: dedicatedMcp ? [] : allowedCombos,
+      allowedConnections: dedicatedMcp ? [] : allowedConnections,
       expiresAt,
     });
     if (
+      !dedicatedMcp && (
       noLog === true ||
       allowUsageCommand === true ||
       usageLimitEnabled === true ||
       dailyUsageLimitUsd !== undefined ||
       weeklyUsageLimitUsd !== undefined ||
-      chaosModeEnabled === true
+      chaosModeEnabled === true)
     ) {
       await updateApiKeyPermissions(apiKey.id, {
         ...(noLog === true && { noLog: true }),
@@ -133,9 +142,9 @@ export async function POST(request) {
         allowedModels: apiKey.allowedModels,
         allowedCombos: apiKey.allowedCombos,
         allowedConnections: apiKey.allowedConnections,
-        noLog: noLog === true,
-        allowUsageCommand: allowUsageCommand === true,
-        usageLimitEnabled: usageLimitEnabled === true,
+        noLog: dedicatedMcp ? false : noLog === true,
+        allowUsageCommand: dedicatedMcp ? false : allowUsageCommand === true,
+        usageLimitEnabled: dedicatedMcp ? false : usageLimitEnabled === true,
         dailyUsageLimitUsd: dailyUsageLimitUsd ?? null,
         weeklyUsageLimitUsd: weeklyUsageLimitUsd ?? null,
         chaosModeEnabled: chaosModeEnabled === true,
