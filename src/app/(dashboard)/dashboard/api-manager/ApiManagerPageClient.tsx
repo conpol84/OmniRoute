@@ -1796,6 +1796,8 @@ const PermissionsModal = memo(function PermissionsModal({
 }) {
   const t = useTranslations("apiManager");
   const tc = useTranslations("common");
+  const firboMcpEdit = firboMcpKeyCopy(useLocale());
+  const [convertToMcpReadOnly, setConvertToMcpReadOnly] = useState(false);
 
   // Initialize state from props - component remounts when key prop changes
   const initialModels = Array.isArray(apiKey?.allowedModels) ? apiKey.allowedModels : [];
@@ -2056,13 +2058,14 @@ const PermissionsModal = memo(function PermissionsModal({
       }
     }
     const modelAccess = buildModelAccessSavePayload({ allowAll, selectedModels });
+    if (convertToMcpReadOnly && !window.confirm(firboMcpEdit.confirm)) return;
     onSave(
       keyName,
-      modelAccess.allowedModels,
-      allowAllCombos ? [ALL_COMBOS_ACCESS_RULE] : selectedCombos,
-      noLogEnabled,
-      allowAllConnections ? [] : selectedConnections,
-      autoResolveEnabled,
+      convertToMcpReadOnly ? [] : modelAccess.allowedModels,
+      convertToMcpReadOnly ? [] : allowAllCombos ? [ALL_COMBOS_ACCESS_RULE] : selectedCombos,
+      convertToMcpReadOnly ? false : noLogEnabled,
+      convertToMcpReadOnly ? [] : allowAllConnections ? [] : selectedConnections,
+      convertToMcpReadOnly ? false : autoResolveEnabled,
       keyIsActive,
       throttleDelayMs,
       keyIsBanned,
@@ -2071,6 +2074,7 @@ const PermissionsModal = memo(function PermissionsModal({
       schedule,
       rateLimits.length > 0 ? rateLimits : null,
       mergeApiKeyPermissionScopes(apiKey?.scopes, {
+        mcpReadOnly: convertToMcpReadOnly,
         manageEnabled,
         selfUsageEnabled,
         selfAccountQuotaEnabled,
@@ -2079,19 +2083,21 @@ const PermissionsModal = memo(function PermissionsModal({
       allowAllEndpoints ? [] : selectedEndpoints,
       streamDefaultMode,
       compressionEnabled,
-      allowAutoCombos,
+      convertToMcpReadOnly ? false : allowAutoCombos,
       catalogScope,
       disableNonPublicModels,
-      usageCommandEnabled,
-      usageLimitEnabled,
+      convertToMcpReadOnly ? false : usageCommandEnabled,
+      convertToMcpReadOnly ? false : usageLimitEnabled,
       parseUsdLimitInput(dailyUsageLimitUsd),
       parseUsdLimitInput(weeklyUsageLimitUsd),
       blockedModels,
       chaosModeEnabled,
-      modelAccess.modelAccessMode,
-      allowAllConnections ? "all" : "restricted"
+      convertToMcpReadOnly ? "restricted" : modelAccess.modelAccessMode,
+      convertToMcpReadOnly ? "all" : allowAllConnections ? "all" : "restricted"
     );
   }, [
+    convertToMcpReadOnly,
+    firboMcpEdit.confirm,
     onSave,
     keyName,
     allowAll,
@@ -2658,6 +2664,23 @@ const PermissionsModal = memo(function PermissionsModal({
               {tc("clear")}
             </button>
           </div>
+        </div>
+        {/* Explicit owner-approved conversion: resets all old scopes on save. */}
+        <div className="flex items-start justify-between gap-3 p-3 rounded-lg border border-emerald-500/30 bg-emerald-500/5">
+          <div className="flex flex-col gap-1">
+            <p className="text-sm font-medium text-text-main">{firboMcpEdit.convert}</p>
+            <p className="text-xs text-text-muted">{firboMcpEdit.convertHelp}</p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-label={firboMcpEdit.convert}
+            aria-checked={convertToMcpReadOnly}
+            onClick={() => setConvertToMcpReadOnly((prev) => !prev)}
+            className="shrink-0 px-3 py-1.5 rounded border border-emerald-500/40 text-sm"
+          >
+            {convertToMcpReadOnly ? tc("enabled") : tc("disabled")}
+          </button>
         </div>
         {/* Management Access */}
         <div className="flex flex-col gap-2 p-3 rounded-lg border border-border bg-surface/40">
